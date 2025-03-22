@@ -1,3 +1,3 @@
 
 === input1.nma ===
-24
+Bad command or filename - "entry"
