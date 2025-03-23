@@ -25,6 +25,8 @@ main proc
     call skip_description
     ; 2) read input expression length
     call read_len_expr
+    ; 3): сopy input string without last 2 bytes
+    call copy_expr
 
 
 exit_prog:
@@ -82,4 +84,18 @@ read_len_expr proc
     ret
 read_len_expr endp
 
+copy_expr proc
+    mov cx, word ptr [expr_len]    ; cx = len of expr
+    sub cx, 2                      ; without last 2 bytes (0D0A)
+
+copy_loop:
+    mov al, [si]                   ; load byte from input buffer
+    mov [di], al                   ; store into expr_buffer
+    inc si
+    inc di
+    dec cx
+    jnz copy_loop
+
+    ret
+copy_expr endp
 end main
