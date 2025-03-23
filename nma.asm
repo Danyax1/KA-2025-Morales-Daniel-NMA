@@ -4,9 +4,9 @@
     filename    db "input.nma", 0   ; file to load
     file_handle dw 0                ; store file handle
     bytes_read  dw 0                ; Number of bytes read
-    descr_len   dd 0                ; len for description
-    expr_len    dd 0                ; len for expression
-    rule_len    dd 0                ; len for rules
+    descr_len   dw 0                ; len for description
+    expr_len    dw 0                ; len for expression
+    rule_len    dw 0                ; len for rules
     buffer      db 32000 dup(0)     ; buffer for symbols in file
     expr_buffer db 32768 dup(0)     ; buffer for input string
 
@@ -59,10 +59,8 @@ read_file proc
 read_file endp
 
 skip_description proc
-    mov ax, word ptr buffer    
-    mov dx, word ptr buffer+2 
-    mov word ptr [descr_len], dx   ; store description length (little-endian)
-    mov word ptr [descr_len+2], ax 
+    mov ax, word ptr buffer     
+    mov [descr_len], ax ; store description length (little-endian)
 
     add ax, 4                      ; adjust for the 4-byte length field
     add ax, offset buffer          ; compute start of input expr
@@ -73,10 +71,8 @@ skip_description proc
 skip_description endp
 
 read_len_expr proc
-    mov ax, word ptr [si]          ; read length
-    mov dx, word ptr [si+2]        ;
-    mov word ptr [expr_len], dx
-    mov word ptr [expr_len+2], ax
+    mov ax, [si]          ; read length
+    mov [expr_len], ax
 
     add si, 4                      ; skip the 4 bytes that are describing the lenght
     mov di, offset expr_buffer     ; prepare to write to the expr_buffer
@@ -85,7 +81,7 @@ read_len_expr proc
 read_len_expr endp
 
 copy_expr proc
-    mov cx, word ptr [expr_len]    ; cx = len of expr
+    mov cx, [expr_len]    ; cx = len of expr
     sub cx, 2                      ; without last 2 bytes (0D0A)
 
 copy_loop:
