@@ -6,7 +6,7 @@
     bytes_read  dw 0                ; Number of bytes read
     descr_len   dw 0                ; len for description
     expr_len    dw 0                ; len for expression
-    rule_len    dw 0                ; len for rules
+    rule_count  dw 0                ; count for rules
     buffer      db 32000 dup(0)     ; buffer for symbols in file
     expr_buffer db 32768 dup(0)     ; buffer for input string
 
@@ -22,11 +22,25 @@ main proc
     ; i will place string the last in order to not overwrite any other data
 
     ; 1) skip description
+    xor ax, ax
+    xor dx, dx
+    
     call skip_description
     ; 2) read input expression length
+    xor ax, ax
+    xor dx, dx
+
     call read_len_expr
     ; 3): сopy input string without last 2 bytes
+    xor ax, ax
+    xor dx, dx
+
     call copy_expr
+    ; 4) count the amount of rules
+    xor ax, ax
+    xor dx, dx
+
+    call count_rules
 
 
 exit_prog:
@@ -94,4 +108,38 @@ copy_loop:
 
     ret
 copy_expr endp
+
+count_rules proc
+    ; find the start of the rule section
+    mov ax, [descr_len]
+    add ax, [expr_len]      
+    add ax, 12              ; skip expr/descr/rule length field
+    add ax, offset buffer   ; Compute start of rules section
+    mov si, ax              ; si points to rules
+
+    xor cx, cx              ; clear cx
+
+count_loop:
+    mov al, [si]            ; read a byte
+    cmp al, 0dh             ; check for 0d
+    jne skip_check
+    cmp byte ptr [si+1], 0ah ; check 0a
+    jne skip_check
+
+    inc cx                  ; Found a rule separator, increase count
+
+skip_check:
+    inc si                  ; move to next byte
+
+    check_overflow:
+        cmp si, 32000                               ; Prevent overflow
+        jae end_count                               ; Stop if at end of buffer
+    
+    jmp count_loop         
+
+end_count:
+    mov [rule_count], cx    ; store rule count
+    ret
+count_rules endp
+
 end main
