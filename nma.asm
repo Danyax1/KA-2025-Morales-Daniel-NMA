@@ -41,13 +41,26 @@ main proc
     xor dx, dx
 
     call count_rules
-
+    
+    ;Everything is ready for execution
+    ;Execution process consists of the following steps
+    ;1) read the left part of 1st rule
+    ;2) go and compare strings
+    ;   2.1 if the match was not found by the and of the string, then go to 2nd rule and so on
+    ;       2.1.1 if rule's number == rule count => finish aprogram
+    ;3) if match was found, we do the following
+    ;   3.1 calculate the difference between left and right parts of the rule
+    ;   3.2 update the expr_len value
+    ;       3.2.1 check for overflow
+    ;       3.2.2 if OF then don't do any substitutions and end program
+    ;   3.3 go to the 1st rule
 
 exit_prog:
     mov ax, 4c00h
     int 21h
 
 main endp
+; the following procs are for preparing execution
 
 read_file proc
     ; open file
@@ -142,4 +155,325 @@ end_count:
     ret
 count_rules endp
 
+;the following procs are for executing (copied from the book)
+
+MoveLeft proc 
+; MoveLeft Move byte-block left (down) in memory
+
+; Input:
+; Si = address of source string (s1)
+; di = address of destination string (s2)
+; bx = index s1 (i1)
+; dx = index s2 (i2)
+; cx = number of bytes to move (count)
+
+; Output:
+; count bytes from s1[i1] moved to the location
+; starting at s2[i2]
+; Registers: none
+    jcxz finish ; Exit if count = 0
+
+    push cx ; Save modified registers
+    push si
+    push di
+
+    add si, bx ; Index into source string
+    add di, dx ; Index into destination string 81: cld ; Auto-increment si and di
+    rep movsb ; Move while cx <> @
+
+    pop di ; Restore registers
+    pop si
+    pop cx
+    finish:
+    ret ; Return to caller
+MoveLeft endp 
+
+MoveRight proc 
+; MoveRight - Move byte-block right (up) in memory
+; Input: (same as MoveLeft)  
+; Output: (same as MoveLeft)  
+; Registers: none  
+    jcxz @@exit        ; Exit if count = 0  
+    push cx            ; Save modified registers  
+    push di  
+    push si  
+
+    add si, bx         ; Index into source string  
+    add di, dx         ; Index into destination string  
+    add si, cx         ; Adjust to last source byte  
+    dec si  
+    add di, cx         ; Adjust to last destination byte  
+    dec di  
+    std                ; Auto-decrement si and di  
+    rep movsb          ; Move while cx <> 0  
+
+    pop si             ; Restore registers  
+    pop di  
+    pop cx  
+
+@@exit:  
+    ret                ; Return to caller  
+
+MoveRight endp 
+
+StrNull proc  
+    ; Erase all characters in a string  
+    ; Input:  
+    ;   di = address of string (s)  
+    ; Output:  
+    ;   s[0] <- null character (ASCII 0)  
+    ; Registers:  
+    ;   none  
+
+    mov [byte ptr di], 0  ; Insert null character at s[0]  
+    ret                   ; Return to caller  
+
+StrNull endp  
+
+StrLength proc  
+    ; Count non-null characters in a string  
+    ; Input:  
+    ;   di = address of string (s)  
+    ; Output:  
+    ;   cx = number of non-null characters in s  
+    ; Registers:  
+    ;   cx  
+
+    push ax          ; Save modified registers  
+    push di  
+
+    xor al, al       ; al <- search char (null)  
+    mov cx, 0FFFFh   ; CX <- maximum search depth  
+    cld              ; Auto-increment di  
+    repnz scasb      ; Scan for al while [di] <> null & cx <> 0  
+    not cx           ; Ones complement of cx  
+    dec cx           ; Subtract 1 to get string length  
+
+    pop di           ; Restore registers  
+    pop ax  
+
+    ret              ; Return to caller  
+
+StrLength endp  
+
+StrCompare proc  
+    ; Compare two strings  
+    ; Input:  
+    ;   si = address of string 1 (s1)  
+    ;   di = address of string 2 (s2)  
+    ; Output:  
+    ;   Flags set for conditional jumps: jb, jbe, je, ja, jae  
+    ; Registers:  
+    ;   None  
+
+    push ax          ; Save modified registers  
+    push di  
+    push si  
+
+    cld              ; Auto-increment si and di  
+
+@@compare:  
+    lodsb           ; Load byte from s1 into al, advance si  
+    scasb           ; Compare al with byte from s2, advance di  
+    jne @@done      ; Exit if non-equal chars found  
+    or al, al       ; Check if al = 0 (end of s1)  
+    jne @@compare   ; If not null, continue comparing  
+
+@@done:  
+    pop si          ; Restore registers  
+    pop di  
+    pop ax  
+
+    ret             ; Return flags to caller  
+
+StrCompare endp  
+
+StrDelete proc  
+    ; Delete characters anywhere in a string  
+    ; Input:  
+    ;   di = address of string (s)  
+    ;   dx = index (i) of first character to delete  
+    ;   cx = number of characters to delete (n)  
+    ; Output:  
+    ;   n characters deleted from string at s[i]  
+    ; Note:  
+    ;   Prevents deleting past the end of the string  
+    ; Registers:  
+    ;   none  
+
+    push bx          ; Save modified registers  
+    push cx  
+    push di  
+    push si  
+
+    mov bx, dx      ; Assign string index to bx  
+    add dx, cx      ; Source index <- index + count  
+    call StrLength  ; cx <- length(s)  
+    cmp cx, bx      ; Is length > index?  
+    ja @@delete     ; If yes, jump to delete chars  
+
+    ; If index is beyond string length, truncate string  
+    add di, dx      ; Calculate index to string end  
+    mov [byte ptr di], 0  ; Insert null character  
+    jmp short exit ; Jump to exit  
+
+@@delete:  
+    mov si, di      ; Set source = destination  
+    sub cx, bx      ; CharsToMove <- Len - SourceIndex  
+    inc cx          ; Plus one for null at end of string  
+    call MoveLeft   ; Move chars over deleted portion  
+
+exit:  
+    pop si          ; Restore registers  
+    pop di  
+    pop cx  
+    pop bx  
+    ret             ; Return to caller  
+
+StrDelete endp  
+
+StrInsert proc  
+
+    ; Insert characters from string s1 into string s2 at index i  
+    ; Input:  
+    ;   si = address of string 1 (s1)  
+    ;   di = address of string 2 (s2)  
+    ;   dx = insertion index for s2 (i)  
+    ; Output:  
+    ;   chars from string s1 inserted at s2[i]  
+    ;   s1 not changed  
+    ; Registers:  
+    ;   none  
+
+    push ax          ; Save modified registers  
+    push bx  
+    push cx  
+
+    ; ax = LenInsertion  
+    ; cx = CharsToMove  
+    xchg si, di      ; Exchange si and di  
+    call StrLength   ; Find length of s1  
+    xchg si, di      ; Restore si and di  
+    mov ax, cx       ; Save length(s1) in ax  
+
+    call StrLength   ; Find length of s2  
+    sub cx, dx       ; cx = (CharsToMove)  
+    inc cx           ; Adjust cx for insertion  
+
+    ; bx = si index  
+    push dx          ; Save index (dx) and si  
+    push si  
+
+    mov si, di       ; Make si and di address s2  
+    mov bx, dx       ; Set s1 index to dx (insertion index)  
+    add dx, ax       ; Set s2 index to LenInsertion  
+
+    call MoveRight   ; Open a hole for the insertion  
+
+    pop si           ; Restore index (dx) and si  
+    pop dx  
+
+    xor bx, bx       ; Clear bx  
+    mov cx, ax       ; Set cx to LenInsertion  
+
+    call MoveLeft    ; Insert s1 into hole in s2  
+
+    pop cx           ; Restore registers  
+    pop bx  
+    pop ax  
+
+    ret              ; Return to caller  
+
+StrInsert endp  
+
+StrConcat proc  
+    ; Concatenate string s1 to the end of string s2  
+    ; Input:  
+    ;   si = address of source string (s1)  
+    ;   di = address of destination string (s2)  
+    ; Output:  
+    ;   chars from s1 added to the end of s2  
+    ; Registers:  
+    ;   none  
+
+    push bx          ; Save modified registers  
+    push cx  
+    push dx  
+
+    ; Find the length of s2  
+    call StrLength   ; Length of s2 is in cx  
+    mov dx, cx       ; Save the length of s2 in dx  
+    xchg si, di      ; Swap si and di  
+    call StrLength   ; Find the length of s1 (cx)  
+    inc cx           ; Increment cx to account for the null terminator  
+    xchg si, di      ; Restore si and di  
+
+    xor bx, bx       ; Clear bx for the move operation  
+    call MoveLeft    ; Move s2 to make space for s1  
+
+    pop dx           ; Restore registers  
+    pop cx  
+    pop bx  
+
+    ret              ; Return to caller  
+
+StrConcat endp
+
+StrCopy proc  
+    ; Copy one string to another  
+    ; Input:  
+    ;   si = address of source string (s1)  
+    ;   di = address of destination string (s2)  
+    ; Output:  
+    ;   Chars in si copied to s2  
+    ; Note:  
+    ;   s2 must be at least as large as s1  
+    ; Registers:  
+    ;   none  
+
+    push bx          ; Save modified registers  
+    push cx  
+    push dx  
+
+    xchg si, di      ; Exchange si and di, so we can use di as the source and si as the destination  
+    call StrLength   ; Call StrLength to determine the length of the source string (s1)  
+    inc cx           ; Increment cx to include space for the null terminator  
+    xchg si, di      ; Restore original values of si and di  
+
+    xor bx, bx       ; Clear bx (used for movement)  
+    xor dx, dx       ; Clear dx (used for addressing)  
+    call MoveLeft    ; Move the characters from si to di  
+
+    pop dx           ; Restore registers  
+    pop cx  
+    pop bx  
+
+    ret              ; Return to caller  
+
+StrCopy endp  
+
+StrPos proc  
+    ; Search for the position of a substring in a string  
+    ; Input:  
+    ;   si = address of substring to find  
+    ;   di = address of target string to scan  
+    ; Output:  
+    ;   if zf = 1, then dx = index of substring  
+    ;   if zf = 0, then substring was not found  
+    ;   Note: dx is meaningless if zf = 0  
+    ; Registers:  
+    ;   dx  
+
+    push ax          ; Save modified registers  
+    push bx  
+    push cx  
+    push di  
+
+    call StrLength   ; Find length of target string (s2)  
+    mov ax, cx       ; Save length of target string in ax  
+
+    xchg si, di      ; Swap si and di
+    ret              ; Return to caller  
+
+StrPos endp
 end main
