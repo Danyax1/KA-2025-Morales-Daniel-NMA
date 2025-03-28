@@ -7,9 +7,9 @@ org 100h
     descr_len   dw 0                ; len for description
     expr_len    dw 0                ; len for expression
     rule_count  dw 0                ; count for rules
-    rule_index  dw 2                ; what rule is being executed
-    rule_buffer db 256 dup(0)       ; buffer for extracted RHS
-    
+    rule_index  dw 2h                ; what rule is being executed(default 1)
+    rule_buffer db 128 dup(0)       ; buffer for extracted left
+    rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
     buffer      db 32000 dup(0)     ; buffer for symbols in file
     expr_buffer db 32768 dup(0)     ; buffer for input string
 
@@ -58,7 +58,30 @@ main proc
     ;       3.2.2 if OF then don't do any substitutions and end program
     ;   3.3 go to the 1st rule
 
+
+    ; rule_buffer - left part (to be replaced)
+    ; rule_buffer - new right part (to be inserted)
     call getRule
+
+
+is_substring: 
+    mov si, offset rule_buffer
+    mov di, offset expr_buffer
+    ;   si = address of substring to find  
+    ;   di = address of target string to scan 
+    call StrPos
+
+    jnz exit_prog           ; if there is substring => replace
+
+    mov di, offset rule_index
+    mov ax, [di]
+    inc ax
+    mov [di], ax        ; if not a substring => go to the next rule
+
+
+
+
+
 
 exit_prog:
     mov ax, 4c00h
@@ -161,24 +184,24 @@ end_count:
     ret
 count_rules endp
 
-;the following procs are for executing (copied from the book)
+;the following procs are for executing
 getRule proc
     rule_fetching:
     xor cx, cx
     mov cx, [rule_index]  ; get the rule index
     cmp cx, [rule_count]  ; is it within range
-    jae finish_rule
+    ja finish_rule
 
     xor ax, ax
     mov ax, [descr_len]
     add ax, [expr_len]      
-    add ax, 12              ; skip expr/descr/rule length field
+    add ax, 14              ; skip expr/descr/rule length field
     add ax, offset buffer   ; Compute start of rules section
     mov si, ax              ; si points to rules
     find_rule:
         dec cx              ;  start to count the rules, until needed
         cmp cx, 0
-        je right_rule_found ; if found the rule
+        je precopy_to_buffer ; if found the rule
         ; go to the next rule
         check_0a:
             inc si          
@@ -186,8 +209,13 @@ getRule proc
             cmp al, 0ah     ;if 0a found - next rule
             jne check_0a
         jmp find_rule
-    right_rule_found:
-        inc si              ; go to start of needed rule
+
+    precopy_to_buffer:
+        mov al, [si]
+        cmp al, 0ah ; if not 1st rule we'll stand at tab
+        jne copy_to_buffer
+        inc si
+
     copy_to_buffer:
         mov di, offset rule_buffer
         mov cx, 2           ; find second tab
@@ -198,6 +226,11 @@ getRule proc
             dec cx
             cmp cx, 0           ; if 2nd tab found -finish
             je finish_rule
+
+            dec si                          ; go to the last symbol in left part (always tab)
+            mov [si], 0h                    ; delete tab
+            mov di, offset rule_buffer_r ; now copiing second part of the rule to the other buffer
+
             write_to_buffer:
                 mov al, [si]                   ; load byte from input buffer
                 mov [di], al                   ; store into expr_buffer
@@ -207,6 +240,8 @@ getRule proc
         finish_rule:
             ret
 getRule endp
+
+;the following procs are for executing (copied from the book)
 
 MoveLeft proc 
 ; MoveLeft Move byte-block left (down) in memory
@@ -294,11 +329,16 @@ StrLength proc
     push di  
 
     xor al, al       ; al <- search char (null)  
-    mov cx, 0FFFFh   ; CX <- maximum search depth  
-    cld              ; Auto-increment di  
-    repnz scasb      ; Scan for al while [di] <> null & cx <> 0  
-    not cx           ; Ones complement of cx  
-    dec cx           ; Subtract 1 to get string length  
+    mov cx, 0
+countdown:
+    cmp [di], 0h  
+    jne increment
+    jmp convert
+increment:
+    inc di
+    inc cx
+    jmp countdown
+convert:
 
     pop di           ; Restore registers  
     pop ax  
@@ -310,8 +350,8 @@ StrLength endp
 StrCompare proc  
     ; Compare two strings  
     ; Input:  
-    ;   si = address of string 1 (s1)  
-    ;   di = address of string 2 (s2)  
+    ;   si = address of string 1 (s1) - substring
+    ;   di = address of string 2 (s2) - main string
     ; Output:  
     ;   Flags set for conditional jumps: jb, jbe, je, ja, jae  
     ; Registers:  
@@ -319,18 +359,22 @@ StrCompare proc
 
     push ax          ; Save modified registers  
     push di  
-    push si  
+    push si    
 
-    cld              ; Auto-increment si and di  
-
-@@compare:  
-    lodsb           ; Load byte from s1 into al, advance si  
-    scasb           ; Compare al with byte from s2, advance di  
-    jne @@done      ; Exit if non-equal chars found  
+compare:  
+    mov al, [si]           ; Load byte from s1 into al, advance si  
+    cmp al, [di]            ; compare with di, advance di
+    jne done      ; Exit if non-equal chars found  
     or al, al       ; Check if al = 0 (end of s1)  
-    jne @@compare   ; If not null, continue comparing  
+    jne incrementation   ; If not null, continue comparing  
+    jmp done
 
-@@done:  
+incrementation:
+    inc si
+    inc di
+    jmp compare
+
+done:  
     pop si          ; Restore registers  
     pop di  
     pop ax  
@@ -503,8 +547,7 @@ StrCopy proc
 
 StrCopy endp  
 
-StrPos proc
-  
+StrPos proc  
     ; Search for the position of a substring in a string  
     ; Input:  
     ;   si = address of substring to find  
@@ -524,36 +567,41 @@ StrPos proc
     call StrLength   ; Find length of target string (s2)  
     mov ax, cx       ; Save length of target string in ax  
 
-    xchg si, di      ; Swap si and di
-    call StrLength ; Find length of substring
+    xchg si, di      ; Swap si and di (now si = target string, di = substring)  
+    call StrLength   ; Find length of substring (s1)  
+    mov bx, cx       ; Save length of substring in bx  
 
-    mov DX: Cx ; Save length(s1) in bx
-    xchg Si, di ; Restore si and di
-    sub ax, bx ;    y+ ax = last possible index
+    xchg si, di      ; Restore si and di (si = substring, di = target string)  
+    sub ax, bx       ; ax = last possible starting index in the target string  
+    jb not_found     ; Exit if target string is shorter than substring  
 
-    jb second ; Exit if len target < len substring 
-    mov dx, Offffh ; Initialize dx to -1
+    mov dx, 0FFFFh   ; Initialize dx to -1 (default: substring not found)  
 
-first:
-    inc dx ; For i = @ TO last possible index
-    mov cl, [byte bx + di] ; save char at s[bx] in cl 
-    mov [byte bx + di],"0" ; Replace char with null 
-    call StrCompare ; Compare si to altered di 
-    mov [byte bx + di], cl ; Restore replaced char 
-    je second ; Jump if match found, dx=index, zf=1
-    inc di ; Else advance target string index 
-    cmp dx, ax ; When equal, all positions checked
-    jne first ; Continue search unless not found 430:
-    xor CX, CX ; Substring not found. Reset zf = 0
-    inc CX  ; 5 to indicate no match
+search_loop:  
+    inc dx             ; Increment index (dx)  
+    mov cl, [di + bx]  ; Save character at s[bx] in cl  
+    mov byte ptr [byte ptr di + bx], 0   ; Temporarily replace character with null terminator  
+    call StrCompare    ; Compare substring (si) with the modified target string (di)  
+    mov [byte ptr di + bx], cl  ; Restore replaced character  
 
-second:
-    pop di ; Restore registers
-    pop CX
-    pop bx
-    pop ax
+    je found          ; If match found, jump to found (zf=1, dx=index)  
+
+    inc di           ; Otherwise, move to the next character in the target string  
+    cmp dx, ax       ; Have we reached the last possible position?  
+    jne search_loop  ; If not, continue search  
+
+not_found:  
+    xor cx, cx       ; Reset zf to 0 (substring not found)  
+    inc cx           ; Indicate failure by setting cx to 1  
+
+found:  
+    pop di           ; Restore registers  
+    pop cx  
+    pop bx  
+    pop ax  
 
     ret              ; Return to caller  
 
-StrPos endp
+StrPos endp  
+
 end main
