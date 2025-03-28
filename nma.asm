@@ -1,5 +1,5 @@
 .model small
-.stack 100h
+org 100h
 .data
     filename    db "input.nma", 0   ; file to load
     file_handle dw 0                ; store file handle
@@ -7,6 +7,9 @@
     descr_len   dw 0                ; len for description
     expr_len    dw 0                ; len for expression
     rule_count  dw 0                ; count for rules
+    rule_index  dw 2                ; what rule is being executed
+    rule_buffer db 256 dup(0)       ; buffer for extracted RHS
+    
     buffer      db 32000 dup(0)     ; buffer for symbols in file
     expr_buffer db 32768 dup(0)     ; buffer for input string
 
@@ -54,6 +57,8 @@ main proc
     ;       3.2.1 check for overflow
     ;       3.2.2 if OF then don't do any substitutions and end program
     ;   3.3 go to the 1st rule
+
+    call getRule
 
 exit_prog:
     mov ax, 4c00h
@@ -140,14 +145,15 @@ count_loop:
     jne skip_check
 
     inc cx                  ; Found a rule separator, increase count
+    
+    inc si
+    inc si
+    cmp [si], 00h
+    je end_count
+    dec si
 
 skip_check:
     inc si                  ; move to next byte
-
-    check_overflow:
-        cmp si, 32000                               ; Prevent overflow
-        jae end_count                               ; Stop if at end of buffer
-    
     jmp count_loop         
 
 end_count:
@@ -156,6 +162,51 @@ end_count:
 count_rules endp
 
 ;the following procs are for executing (copied from the book)
+getRule proc
+    rule_fetching:
+    xor cx, cx
+    mov cx, [rule_index]  ; get the rule index
+    cmp cx, [rule_count]  ; is it within range
+    jae finish_rule
+
+    xor ax, ax
+    mov ax, [descr_len]
+    add ax, [expr_len]      
+    add ax, 12              ; skip expr/descr/rule length field
+    add ax, offset buffer   ; Compute start of rules section
+    mov si, ax              ; si points to rules
+    find_rule:
+        dec cx              ;  start to count the rules, until needed
+        cmp cx, 0
+        je right_rule_found ; if found the rule
+        ; go to the next rule
+        check_0a:
+            inc si          
+            mov al, [si]        
+            cmp al, 0ah     ;if 0a found - next rule
+            jne check_0a
+        jmp find_rule
+    right_rule_found:
+        inc si              ; go to start of needed rule
+    copy_to_buffer:
+        mov di, offset rule_buffer
+        mov cx, 2           ; find second tab
+        start_process:
+            mov al, [si]
+            cmp al, 09          ; tab found
+            jne write_to_buffer
+            dec cx
+            cmp cx, 0           ; if 2nd tab found -finish
+            je finish_rule
+            write_to_buffer:
+                mov al, [si]                   ; load byte from input buffer
+                mov [di], al                   ; store into expr_buffer
+                inc si
+                inc di
+                jmp start_process
+        finish_rule:
+            ret
+getRule endp
 
 MoveLeft proc 
 ; MoveLeft Move byte-block left (down) in memory
@@ -452,7 +503,8 @@ StrCopy proc
 
 StrCopy endp  
 
-StrPos proc  
+StrPos proc
+  
     ; Search for the position of a substring in a string  
     ; Input:  
     ;   si = address of substring to find  
@@ -473,6 +525,34 @@ StrPos proc
     mov ax, cx       ; Save length of target string in ax  
 
     xchg si, di      ; Swap si and di
+    call StrLength ; Find length of substring
+
+    mov DX: Cx ; Save length(s1) in bx
+    xchg Si, di ; Restore si and di
+    sub ax, bx ;    y+ ax = last possible index
+
+    jb second ; Exit if len target < len substring 
+    mov dx, Offffh ; Initialize dx to -1
+
+first:
+    inc dx ; For i = @ TO last possible index
+    mov cl, [byte bx + di] ; save char at s[bx] in cl 
+    mov [byte bx + di],"0" ; Replace char with null 
+    call StrCompare ; Compare si to altered di 
+    mov [byte bx + di], cl ; Restore replaced char 
+    je second ; Jump if match found, dx=index, zf=1
+    inc di ; Else advance target string index 
+    cmp dx, ax ; When equal, all positions checked
+    jne first ; Continue search unless not found 430:
+    xor CX, CX ; Substring not found. Reset zf = 0
+    inc CX  ; 5 to indicate no match
+
+second:
+    pop di ; Restore registers
+    pop CX
+    pop bx
+    pop ax
+
     ret              ; Return to caller  
 
 StrPos endp

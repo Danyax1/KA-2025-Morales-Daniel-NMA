@@ -15,10 +15,9 @@
               "RUN ${filename}"
             ],
             "debug": [
-              "TASM /zi ${file}",
-              "TLINK /t/v/3 ${filename}.obj",
-              "rem copy C:\\TASM\\TDC2.TD TDCONFIG.TD",
-              "TD -cTDCONFIG.TD ${filename}.com input.nma"
+              "TLINK /v/3 ${filename}.obj",
+              "copy C:\\TASM\\TDC2.TD TDCONFIG.TD",
+              "TD -cTDCONFIG.TD ${filename}.exe < input.nma"
             ]
         },
         "TASM": {
