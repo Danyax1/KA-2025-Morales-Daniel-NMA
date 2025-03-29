@@ -7,7 +7,7 @@ org 100h
     descr_len   dw 0                ; len for description
     expr_len    dw 0                ; len for expression
     rule_count  dw 0                ; count for rules
-    rule_index  dw 2h                ; what rule is being executed(default 1)
+    rule_index  dw 1h                ; what rule is being executed(default 1)
     rule_buffer db 128 dup(0)       ; buffer for extracted left
     rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
     buffer      db 32000 dup(0)     ; buffer for symbols in file
@@ -61,6 +61,12 @@ main proc
 
     ; rule_buffer - left part (to be replaced)
     ; rule_buffer - new right part (to be inserted)
+rule_caller:
+    mov cx, [rule_index]
+    cmp cx, 0FFFFh      ; only appear if last rule was final (l => r.)
+    je exit_prog
+    cmp cx, [rule_count]
+    ja exit_prog        ; if we ran out of rules
     call getRule
 
 
@@ -71,18 +77,26 @@ is_substring:
     ;   di = address of target string to scan 
     call StrPos
 
-    jnz exit_prog           ; if there is substring => replace
+    jnz next_rule           ; if there is no substring => next rule
 
     mov di, offset rule_index
     mov ax, [di]
     inc ax
     mov [di], ax        ; if not a substring => go to the next rule
+    jmp exit_prog
 
 
-
-
-
-
+next_rule:
+    mov di, offset rule_buffer
+    call StrNull
+    mov di, offset rule_buffer_r
+    call StrNull
+    mov di, offset rule_index
+    mov dx, [di]
+    inc dx
+    mov [di], dx
+    jmp rule_caller
+    
 exit_prog:
     mov ax, 4c00h
     int 21h
@@ -187,15 +201,11 @@ count_rules endp
 ;the following procs are for executing
 getRule proc
     rule_fetching:
-    xor cx, cx
-    mov cx, [rule_index]  ; get the rule index
-    cmp cx, [rule_count]  ; is it within range
-    ja finish_rule
 
     xor ax, ax
     mov ax, [descr_len]
     add ax, [expr_len]      
-    add ax, 14              ; skip expr/descr/rule length field
+    add ax, 12              ; skip expr/descr/rule length field
     add ax, offset buffer   ; Compute start of rules section
     mov si, ax              ; si points to rules
     find_rule:
@@ -227,8 +237,7 @@ getRule proc
             cmp cx, 0           ; if 2nd tab found -finish
             je finish_rule
 
-            dec si                          ; go to the last symbol in left part (always tab)
-            mov [si], 0h                    ; delete tab
+            inc si                       ; skip tab
             mov di, offset rule_buffer_r ; now copiing second part of the rule to the other buffer
 
             write_to_buffer:
