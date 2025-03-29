@@ -64,9 +64,9 @@ main proc
 rule_caller:
     mov cx, [rule_index]
     cmp cx, 0FFFFh      ; only appear if last rule was final (l => r.)
-    je exit_prog
+    je exit_prog                                        ;                               !!!
     cmp cx, [rule_count]
-    ja exit_prog        ; if we ran out of rules
+    ja exit_prog        ; if we ran out of rules                                        !!!
     call getRule
 
 
@@ -79,24 +79,39 @@ is_substring:
 
     jnz next_rule           ; if there is no substring => next rule
 
-    mov di, offset rule_index
-    mov ax, [di]
-    inc ax
-    mov [di], ax        ; if not a substring => go to the next rule
-    jmp exit_prog
+    jmp calcLenExpr           
 
 
 next_rule:
-    mov di, offset rule_buffer
-    call StrNull
-    mov di, offset rule_buffer_r
-    call StrNull
-    mov di, offset rule_index
-    mov dx, [di]
-    inc dx
-    mov [di], dx
+    call delPreviousRule
     jmp rule_caller
-    
+
+calcLenExpr:
+    ; calculate the difference between left and right parts of the rule
+    ; update the expr_len value
+    ; check for overflow
+    ; if OF then don't do any substitutions and end program
+
+
+    mov di, offset rule_buffer
+    call StrLength          ; get length of left part of the rule (di - pointer; cx - length)
+    mov bx, cx              ; store it in bx
+
+    mov di, offset rule_buffer_r
+    xor cx, cx               ; clear cx
+    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
+    sub cx, bx              ; calculate difference between left and right parts of the rule
+
+    add expr_len, cx      ; update expr_len value
+
+    cmp expr_len, 32768d  ; check for overflow
+    ja exit_prog            ; if overflow => exit program
+
+    jmp substitution         ; start substitution
+
+substitution:
+    jmp exit_prog
+    ; substitute the left part of the rule with the right part of the rule
 exit_prog:
     mov ax, 4c00h
     int 21h
@@ -203,10 +218,11 @@ getRule proc
     rule_fetching:
 
     xor ax, ax
-    mov ax, [descr_len]
-    add ax, [expr_len]      
-    add ax, 12              ; skip expr/descr/rule length field
-    add ax, offset buffer   ; Compute start of rules section
+    mov ax, offset buffer
+    add ax, 12d             ; skip expr/descr/rule length field + 0D0A
+    add ax, [descr_len]   ; Compute start of rules section
+    add ax, [expr_len]      ; skip expr length field
+
     mov si, ax              ; si points to rules
     find_rule:
         dec cx              ;  start to count the rules, until needed
@@ -250,6 +266,20 @@ getRule proc
             ret
 getRule endp
 
+delPreviousRule proc
+     mov di, offset rule_buffer
+    call StrNull                ; del left part
+
+    mov di, offset rule_buffer_r
+    call StrNull                ; del right part
+
+    mov di, offset rule_index
+    mov dx, [di]                ; get the current rule
+    inc dx                      ; go to next rule (+1)
+    mov [di], dx                ; store the next rule
+
+    ret
+delPreviousRule endp
 ;the following procs are for executing (copied from the book)
 
 MoveLeft proc 
