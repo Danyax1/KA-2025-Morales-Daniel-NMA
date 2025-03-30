@@ -44,7 +44,8 @@ main proc
     xor dx, dx
 
     call count_rules
-    
+
+
     ;Everything is ready for execution
     ;Execution process consists of the following steps
     ;1) read the left part of 1st rule
@@ -104,56 +105,13 @@ go_to_symbol:
         dec cx
         cmp cx, 0
         jne delete_symbols
-        jmp create_hole
+        jmp create_hole_for_inserting
 
-create_hole:
+create_hole_for_inserting:
+    pop cx
+    call Create_hole                                                       
 
-    pop cx  ; length of left part of the rule
-    mov bx, cx  ; store it in bx
-    mov di, offset rule_buffer_r
-    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
-    sub cx, bx              ; calculate difference between left and right parts of the rule
-    
-    jz exit_prog                                                                                    ;!!!(insert right part of the rule)
-    js move_left         ; if l>r => move left
-    move_right:         ; if l<r => move right
-    push cx
-        mov di, offset expr_buffer
-        move_to_the_end_of_expr:
-            
-            mov al, [di]         ; load byte from input buffer
-            cmp al, 0           ; check for 0
-            je start_r_swap  
-            inc di                                                                          ;!!!(move right expr)
-            jmp move_to_the_end_of_expr 
-        start_r_swap:
-            pop cx
-            swapping:
-                jcxz exit_prog
-                dec cx
-                one_cycle:
-                    mov al, byte ptr [di]         ; load byte from input buffer
-                    mov ah, byte ptr [di-1]         ; load previous byte from input buffer
-                    cmp ah, 01
-                    je preperation
-                    xchg al, ah
-                    mov byte ptr [di], al         ; peform swap
-                    mov byte ptr [di-1], ah         ; perform swap
-                    dec di
-                    jmp one_cycle
-                preperation:
-                    push cx
-                    movement_right:
-                        inc di
-                        mov al, byte ptr [di]         ; load byte from input buffer
-                        cmp al, 0
-                        je movement_right
-                        jmp move_to_the_end_of_expr
-            jmp exit_prog                                       ;!!!(insert right part of the rule)
-    move_left:
-        neg cx
-        push cx
-        jmp exit_prog                                                                             
+
 exit_prog:
     mov ax, 4c00h
     int 21h
@@ -322,6 +280,7 @@ delPreviousRule proc
 
     ret
 delPreviousRule endp
+
 calcLenExpression proc
     ; calculate the difference between left and right parts of the rule
     ; update the expr_len value
@@ -345,66 +304,96 @@ calcLenExpression proc
 
     ret
 calcLenExpression endp
+
+Create_hole proc
+    mov bx, cx  ; store it in bx
+    mov di, offset rule_buffer_r
+    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
+    sub cx, bx              ; calculate difference between left and right parts of the rule
+    
+    jz finish_ret                                                                                    ;!!!(insert right part of the rule)
+    js move_left         ; if l>r => move left
+    move_right:         ; if l<r => move right
+        push cx
+        mov di, offset expr_buffer
+        move_to_the_end_of_expr:
+            
+            mov al, [di]         ; load byte from input buffer
+            cmp al, 0           ; check for 0
+            je start_r_swap  
+            inc di                                                                          
+            jmp move_to_the_end_of_expr 
+        start_r_swap:
+            inc byte ptr [di]
+            pop cx
+            swapping:
+                jcxz almost_finish_ret                                                      
+                dec cx
+                one_cycle:
+                    mov al, byte ptr [di]         ; load byte from input buffer
+                    mov ah, byte ptr [di-1]         ; load previous byte from input buffer
+                    cmp ah, 01
+                    je preperation
+                    xchg al, ah
+                    mov byte ptr [di], al         ; peform swap
+                    mov byte ptr [di-1], ah         ; perform swap
+                    dec di
+                    jmp one_cycle
+                preperation:
+                    push cx
+                    movement_right:
+                        inc di
+                        mov al, byte ptr [di]         ; load byte from input buffer
+                        cmp al, 0
+                        je movement_right
+                        jmp move_to_the_end_of_expr
+            jmp finish_ret                                       ;!!!(insert right part of the rule)
+        almost_finish_ret:
+            dec byte ptr [di]         ; change last byte 01 to 00
+            jmp finish_ret
+    move_left:
+        neg cx
+        inc cx
+        push cx
+        mov di, offset expr_buffer
+        move_to_last_clear_symbol:
+            mov al, byte ptr [di]         ; load byte from input buffer
+            cmp al, 1
+            je find_end
+            inc di
+            jmp move_to_last_clear_symbol  
+        find_end:
+            inc di
+            mov al, byte ptr [di]         ; load byte from input buffer
+            cmp al, 1
+            jne swapping_left
+            jmp find_end
+        swapping_left:
+            pop cx
+            dec cx
+            one_cycle_left:
+                jcxz finish_ret                                                      ;!!!(insert left part of the rule)
+                
+                mov al, byte ptr [di-1]         ; load byte from input buffer
+                mov ah, byte ptr [di]         ; load next byte from input buffer
+                cmp ah, 0
+                je preperation_left
+                xchg al, ah
+                mov byte ptr [di-1], al         ; peform swap
+                mov byte ptr [di], ah         ; perform swap
+                inc di
+                jmp one_cycle_left
+            preperation_left:
+                push cx
+                movement_left:
+                    dec di
+                    mov byte ptr [di], 0         ;change byte 01 to 00
+                    mov di, offset expr_buffer
+                    jmp move_to_last_clear_symbol 
+    finish_ret:
+        ret
+Create_hole endp
 ;the following procs are for executing (copied from the book)
-
-MoveLeft proc 
-; MoveLeft Move byte-block left (down) in memory
-
-; Input:
-; Si = address of source string (s1)
-; di = address of destination string (s2)
-; bx = index s1 (i1)
-; dx = index s2 (i2)
-; cx = number of bytes to move (count)
-
-; Output:
-; count bytes from s1[i1] moved to the location
-; starting at s2[i2]
-; Registers: none
-    jcxz finish ; Exit if count = 0
-
-    push cx ; Save modified registers
-    push si
-    push di
-
-    add si, bx ; Index into source string
-    add di, dx ; Index into destination string 81: cld ; Auto-increment si and di
-    rep movsb ; Move while cx <> @
-
-    pop di ; Restore registers
-    pop si
-    pop cx
-    finish:
-    ret ; Return to caller
-MoveLeft endp 
-
-MoveRight proc 
-; MoveRight - Move byte-block right (up) in memory
-; Input: (same as MoveLeft)  
-; Output: (same as MoveLeft)  
-; Registers: none  
-    jcxz @@exit        ; Exit if count = 0  
-    push cx            ; Save modified registers  
-    push di  
-    push si  
-
-    add si, bx         ; Index into source string  
-    add di, dx         ; Index into destination string  
-    add si, cx         ; Adjust to last source byte  
-    dec si  
-    add di, cx         ; Adjust to last destination byte  
-    dec di  
-    std                ; Auto-decrement si and di  
-    rep movsb          ; Move while cx <> 0  
-
-    pop si             ; Restore registers  
-    pop di  
-    pop cx  
-
-@@exit:  
-    ret                ; Return to caller  
-
-MoveRight endp 
 
 StrNull proc  
     ; Erase all characters in a string  
