@@ -64,9 +64,9 @@ main proc
 rule_caller:
     mov cx, [rule_index]
     cmp cx, 0FFFFh      ; only appear if last rule was final (l => r.)
-    je exit_prog                                        ;                               !!!
+    je exit_prog                                        ;                               !!!(print expr)
     cmp cx, [rule_count]
-    ja exit_prog        ; if we ran out of rules                                        !!!
+    ja exit_prog        ; if we ran out of rules                                        !!!(print expr)
     call getRule
 
 
@@ -87,31 +87,73 @@ next_rule:
     jmp rule_caller
 
 calcLenExpr:
-    ; calculate the difference between left and right parts of the rule
-    ; update the expr_len value
-    ; check for overflow
-    ; if OF then don't do any substitutions and end program
-
-
-    mov di, offset rule_buffer
-    call StrLength          ; get length of left part of the rule (di - pointer; cx - length)
-    mov bx, cx              ; store it in bx
-
-    mov di, offset rule_buffer_r
-    xor cx, cx               ; clear cx
-    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
-    sub cx, bx              ; calculate difference between left and right parts of the rule
-
-    add expr_len, cx      ; update expr_len value
-
-    cmp expr_len, 32768d  ; check for overflow
-    ja exit_prog            ; if overflow => exit program
-
-    jmp substitution         ; start substitution
+    call calcLenExpression
 
 substitution:
-    jmp exit_prog
+
     ; substitute the left part of the rule with the right part of the rule
+    mov di, offset rule_buffer
+    call StrLength          ; get length of left part of the rule (di - pointer; cx - length)
+    push cx
+    mov di, offset expr_buffer
+go_to_symbol:
+    add di, dx          ; go to the symbol where we need to del symbols
+    delete_symbols:
+        mov byte ptr [di], 1           ; load byte from input buffer
+        inc di
+        dec cx
+        cmp cx, 0
+        jne delete_symbols
+        jmp create_hole
+
+create_hole:
+
+    pop cx  ; length of left part of the rule
+    mov bx, cx  ; store it in bx
+    mov di, offset rule_buffer_r
+    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
+    sub cx, bx              ; calculate difference between left and right parts of the rule
+    
+    jz exit_prog                                                                                    ;!!!(insert right part of the rule)
+    js move_left         ; if l>r => move left
+    move_right:         ; if l<r => move right
+    push cx
+        mov di, offset expr_buffer
+        move_to_the_end_of_expr:
+            
+            mov al, [di]         ; load byte from input buffer
+            cmp al, 0           ; check for 0
+            je start_r_swap  
+            inc di                                                                          ;!!!(move right expr)
+            jmp move_to_the_end_of_expr 
+        start_r_swap:
+            pop cx
+            swapping:
+                jcxz exit_prog
+                dec cx
+                one_cycle:
+                    mov al, byte ptr [di]         ; load byte from input buffer
+                    mov ah, byte ptr [di-1]         ; load previous byte from input buffer
+                    cmp ah, 01
+                    je preperation
+                    xchg al, ah
+                    mov byte ptr [di], al         ; peform swap
+                    mov byte ptr [di-1], ah         ; perform swap
+                    dec di
+                    jmp one_cycle
+                preperation:
+                    push cx
+                    movement_right:
+                        inc di
+                        mov al, byte ptr [di]         ; load byte from input buffer
+                        cmp al, 0
+                        je movement_right
+                        jmp move_to_the_end_of_expr
+            jmp exit_prog                                       ;!!!(insert right part of the rule)
+    move_left:
+        neg cx
+        push cx
+        jmp exit_prog                                                                             
 exit_prog:
     mov ax, 4c00h
     int 21h
@@ -280,6 +322,29 @@ delPreviousRule proc
 
     ret
 delPreviousRule endp
+calcLenExpression proc
+    ; calculate the difference between left and right parts of the rule
+    ; update the expr_len value
+    ; check for overflow
+    ; if OF then don't do any substitutions and end program
+
+
+    mov di, offset rule_buffer
+    call StrLength          ; get length of left part of the rule (di - pointer; cx - length)
+    mov bx, cx              ; store it in bx
+
+    mov di, offset rule_buffer_r
+    xor cx, cx               ; clear cx
+    call StrLength          ; get length of right part of the rule (di - pointer; cx - length)
+    sub cx, bx              ; calculate difference between left and right parts of the rule
+
+    add expr_len, cx      ; update expr_len value
+
+    cmp expr_len, 32768d  ; check for overflow
+    ;ja exit_prog            ; if overflow => exit program                                       !!!(print expr)
+
+    ret
+calcLenExpression endp
 ;the following procs are for executing (copied from the book)
 
 MoveLeft proc 
@@ -352,14 +417,14 @@ StrNull proc
     push dx
     push cx
 
-    mov cx, 64      ;max len
+    mov cx, 128      ;max len
 erase:
     dec cx
     cmp cx, 0       ; check step
     je pop_register
 
-    mov [di], 0  ; Insert null character at s[0]
-    add di, 2       ; go to the next word
+    mov byte ptr [di], 0    ; Insert null character at s[0]
+    inc di                  ; go to the next bytr
     mov dx, [di]
     cmp dx, 0
     jne erase
@@ -437,171 +502,6 @@ done:
     ret             ; Return flags to caller  
 
 StrCompare endp  
-
-StrDelete proc  
-    ; Delete characters anywhere in a string  
-    ; Input:  
-    ;   di = address of string (s)  
-    ;   dx = index (i) of first character to delete  
-    ;   cx = number of characters to delete (n)  
-    ; Output:  
-    ;   n characters deleted from string at s[i]  
-    ; Note:  
-    ;   Prevents deleting past the end of the string  
-    ; Registers:  
-    ;   none  
-
-    push bx          ; Save modified registers  
-    push cx  
-    push di  
-    push si  
-
-    mov bx, dx      ; Assign string index to bx  
-    add dx, cx      ; Source index <- index + count  
-    call StrLength  ; cx <- length(s)  
-    cmp cx, bx      ; Is length > index?  
-    ja @@delete     ; If yes, jump to delete chars  
-
-    ; If index is beyond string length, truncate string  
-    add di, dx      ; Calculate index to string end  
-    mov [byte ptr di], 0  ; Insert null character  
-    jmp short exit ; Jump to exit  
-
-@@delete:  
-    mov si, di      ; Set source = destination  
-    sub cx, bx      ; CharsToMove <- Len - SourceIndex  
-    inc cx          ; Plus one for null at end of string  
-    call MoveLeft   ; Move chars over deleted portion  
-
-exit:  
-    pop si          ; Restore registers  
-    pop di  
-    pop cx  
-    pop bx  
-    ret             ; Return to caller  
-
-StrDelete endp  
-
-StrInsert proc  
-
-    ; Insert characters from string s1 into string s2 at index i  
-    ; Input:  
-    ;   si = address of string 1 (s1)  
-    ;   di = address of string 2 (s2)  
-    ;   dx = insertion index for s2 (i)  
-    ; Output:  
-    ;   chars from string s1 inserted at s2[i]  
-    ;   s1 not changed  
-    ; Registers:  
-    ;   none  
-
-    push ax          ; Save modified registers  
-    push bx  
-    push cx  
-
-    ; ax = LenInsertion  
-    ; cx = CharsToMove  
-    xchg si, di      ; Exchange si and di  
-    call StrLength   ; Find length of s1  
-    xchg si, di      ; Restore si and di  
-    mov ax, cx       ; Save length(s1) in ax  
-
-    call StrLength   ; Find length of s2  
-    sub cx, dx       ; cx = (CharsToMove)  
-    inc cx           ; Adjust cx for insertion  
-
-    ; bx = si index  
-    push dx          ; Save index (dx) and si  
-    push si  
-
-    mov si, di       ; Make si and di address s2  
-    mov bx, dx       ; Set s1 index to dx (insertion index)  
-    add dx, ax       ; Set s2 index to LenInsertion  
-
-    call MoveRight   ; Open a hole for the insertion  
-
-    pop si           ; Restore index (dx) and si  
-    pop dx  
-
-    xor bx, bx       ; Clear bx  
-    mov cx, ax       ; Set cx to LenInsertion  
-
-    call MoveLeft    ; Insert s1 into hole in s2  
-
-    pop cx           ; Restore registers  
-    pop bx  
-    pop ax  
-
-    ret              ; Return to caller  
-
-StrInsert endp  
-
-StrConcat proc  
-    ; Concatenate string s1 to the end of string s2  
-    ; Input:  
-    ;   si = address of source string (s1)  
-    ;   di = address of destination string (s2)  
-    ; Output:  
-    ;   chars from s1 added to the end of s2  
-    ; Registers:  
-    ;   none  
-
-    push bx          ; Save modified registers  
-    push cx  
-    push dx  
-
-    ; Find the length of s2  
-    call StrLength   ; Length of s2 is in cx  
-    mov dx, cx       ; Save the length of s2 in dx  
-    xchg si, di      ; Swap si and di  
-    call StrLength   ; Find the length of s1 (cx)  
-    inc cx           ; Increment cx to account for the null terminator  
-    xchg si, di      ; Restore si and di  
-
-    xor bx, bx       ; Clear bx for the move operation  
-    call MoveLeft    ; Move s2 to make space for s1  
-
-    pop dx           ; Restore registers  
-    pop cx  
-    pop bx  
-
-    ret              ; Return to caller  
-
-StrConcat endp
-
-StrCopy proc  
-    ; Copy one string to another  
-    ; Input:  
-    ;   si = address of source string (s1)  
-    ;   di = address of destination string (s2)  
-    ; Output:  
-    ;   Chars in si copied to s2  
-    ; Note:  
-    ;   s2 must be at least as large as s1  
-    ; Registers:  
-    ;   none  
-
-    push bx          ; Save modified registers  
-    push cx  
-    push dx  
-
-    xchg si, di      ; Exchange si and di, so we can use di as the source and si as the destination  
-    call StrLength   ; Call StrLength to determine the length of the source string (s1)  
-    inc cx           ; Increment cx to include space for the null terminator  
-    xchg si, di      ; Restore original values of si and di  
-
-    xor bx, bx       ; Clear bx (used for movement)  
-    xor dx, dx       ; Clear dx (used for addressing)  
-    call MoveLeft    ; Move the characters from si to di  
-
-    pop dx           ; Restore registers  
-    pop cx  
-    pop bx  
-
-    ret              ; Return to caller  
-
-StrCopy endp  
-
 StrPos proc  
     ; Search for the position of a substring in a string  
     ; Input:  
