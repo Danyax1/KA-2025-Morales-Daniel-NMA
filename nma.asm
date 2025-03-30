@@ -6,6 +6,7 @@ org 100h
     bytes_read  dw 0                ; Number of bytes read
     descr_len   dw 0                ; len for description
     expr_len    dw 0                ; len for expression
+    expr_len_static    dw 0         ; starting len for expression
     rule_count  dw 0                ; count for rules
     rule_index  dw 1h                ; what rule is being executed(default 1)
     rule_buffer db 128 dup(0)       ; buffer for extracted left
@@ -34,6 +35,8 @@ main proc
     xor dx, dx
 
     call read_len_expr
+    ; 2.1) store the static length of the expression
+    mov [expr_len_static], ax
     ; 3): сopy input string without last 2 bytes
     xor ax, ax
     xor dx, dx
@@ -111,7 +114,33 @@ create_hole_for_inserting:
     pop cx
     call Create_hole                                                       
 
+inserting:
+    ; insert the right part of the rule into the hole
+    mov di, offset rule_buffer_r
+    mov si, offset expr_buffer
+    ; go to the place [si] to insert the right part of the rule
+moving_to_hole:
+    mov al, byte ptr [si]           ; load byte from expr
+    inc si
+    cmp al, 1                       ; check for 1 (start of the hole)
+    jne moving_to_hole
+    dec si
+swapping_inserting: 
+    mov al, byte ptr [di]         ; load byte from rule_buffer_r
+    mov ah, byte ptr [si]         ; load next byte from input buffer
+    cmp ah, 1
+    jne set_up_rule
+    xchg al, ah
+    mov byte ptr [di], al         ; perform swap
+    mov byte ptr [si], ah         ; perform swap
+    inc si
+    inc di
+    jmp swapping_inserting
 
+set_up_rule:
+    mov di, offset rule_index
+    mov [di], 0
+    jmp next_rule
 exit_prog:
     mov ax, 4c00h
     int 21h
@@ -221,7 +250,7 @@ getRule proc
     mov ax, offset buffer
     add ax, 12d             ; skip expr/descr/rule length field + 0D0A
     add ax, [descr_len]   ; Compute start of rules section
-    add ax, [expr_len]      ; skip expr length field
+    add ax, [expr_len_static]      ; skip expr length field
 
     mov si, ax              ; si points to rules
     find_rule:
@@ -396,13 +425,6 @@ Create_hole endp
 ;the following procs are for executing (copied from the book)
 
 StrNull proc  
-    ; Erase all characters in a string  
-    ; Input:  
-    ;   di = address of string (s)  
-    ; Output:  
-    ;   s[0] <- null character (ASCII 0)  
-    ; Registers:  
-    ;   dx, cx 
     push dx
     push cx
 
@@ -426,13 +448,6 @@ pop_register:
 StrNull endp  
 
 StrLength proc  
-    ; Count non-null characters in a string  
-    ; Input:  
-    ;   di = address of string (s)  
-    ; Output:  
-    ;   cx = number of non-null characters in s  
-    ; Registers:  
-    ;   cx  
 
     push ax          ; Save modified registers  
     push di  
@@ -457,14 +472,6 @@ convert:
 StrLength endp  
 
 StrCompare proc  
-    ; Compare two strings  
-    ; Input:  
-    ;   si = address of string 1 (s1) - substring
-    ;   di = address of string 2 (s2) - main string
-    ; Output:  
-    ;   Flags set for conditional jumps: jb, jbe, je, ja, jae  
-    ; Registers:  
-    ;   None  
 
     push ax          ; Save modified registers  
     push di  
@@ -492,16 +499,6 @@ done:
 
 StrCompare endp  
 StrPos proc  
-    ; Search for the position of a substring in a string  
-    ; Input:  
-    ;   si = address of substring to find  
-    ;   di = address of target string to scan  
-    ; Output:  
-    ;   if zf = 1, then dx = index of substring  
-    ;   if zf = 0, then substring was not found  
-    ;   Note: dx is meaningless if zf = 0  
-    ; Registers:  
-    ;   dx  
 
     push ax          ; Save modified registers  
     push bx  
