@@ -1,5 +1,4 @@
-.model small
-org 100h
+.model tiny
 .data
     filename    db "input.nma", 0   ; file to load
     file_handle dw 0                ; store file handle
@@ -15,6 +14,7 @@ org 100h
     expr_buffer db 32768 dup(0)     ; buffer for input string
 
 .code
+org 100h
 main proc
     mov ax, @data
     mov ds, ax
@@ -68,9 +68,9 @@ main proc
 rule_caller:
     mov cx, [rule_index]
     cmp cx, 0FFFFh      ; only appear if last rule was final (l => r.)
-    je exit_prog                                        ;                               !!!(print expr)
+    je printing_expr                                        ;                               !!!(print expr)
     cmp cx, [rule_count]
-    ja exit_prog        ; if we ran out of rules                                        !!!(print expr)
+    ja printing_expr        ; if we ran out of rules                                        !!!(print expr)
     call getRule
 
 
@@ -141,6 +141,21 @@ set_up_rule:
     mov di, offset rule_index
     mov [di], 0
     jmp next_rule
+printing_expr:
+    mov di, offset expr_buffer
+    printing_cycle:
+        mov al, byte ptr [di]         ; load byte from expr
+        cmp al, 0
+        je add_symbols
+        inc di
+        jmp printing_cycle
+add_symbols:
+    mov [di], 0D0Ah         ; add 0D0A to the end of the string
+    add di, 2
+    mov byte ptr [di], '$'         ; add '$' to the end of the string
+    mov dx, offset expr_buffer
+    mov ah, 09h
+    int 21h
 exit_prog:
     mov ax, 4c00h
     int 21h
