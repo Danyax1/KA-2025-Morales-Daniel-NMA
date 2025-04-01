@@ -3,6 +3,10 @@
     "masmtasm.ASM.mode": "workspace",
     "masmtasm.ASM.assembler": "TASMcom",
     "masmtasm.ASM.actions": {
+        
+
+
+
 
         "TASMcom": {
             "baseBundle": "<built-in>/TASM.jsdos",
@@ -15,10 +19,12 @@
               "RUN ${filename}"
             ],
             "debug": [
+              "TASM /zi ${file}",
               "TLINK /v/3 ${filename}.obj",
               "copy C:\\TASM\\TDC2.TD TDCONFIG.TD",
-              "TD -cTDCONFIG.TD ${filename}.exe < input.nma"
+              "TD -cTDCONFIG.TD ${filename}.exe input.nma"
             ]
+
         },
         "TASM": {
             "baseBundle": "<built-in>/TASM.jsdos",

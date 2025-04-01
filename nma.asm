@@ -1,17 +1,4 @@
 .model tiny
-.data
-    filename    db "input.nma", 0   ; file to load
-    file_handle dw 0                ; store file handle
-    bytes_read  dw 0                ; Number of bytes read
-    descr_len   dw 0                ; len for description
-    expr_len    dw 0                ; len for expression
-    expr_len_static    dw 0         ; starting len for expression
-    rule_count  dw 0                ; count for rules
-    rule_index  dw 1h                ; what rule is being executed(default 1)
-    rule_buffer db 128 dup(0)       ; buffer for extracted left
-    rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
-    buffer      db 32000 dup(0)     ; buffer for symbols in file
-    expr_buffer db 32768 dup(0)     ; buffer for input string
 
 .code
 org 100h
@@ -560,4 +547,16 @@ found:
 
 StrPos endp  
 
+filename    db "input.nma", 0   ; file to load
+file_handle dw 0                ; store file handle
+bytes_read  dw 0                ; Number of bytes read
+descr_len   dw 0                ; len for description
+expr_len    dw 0                ; len for expression
+expr_len_static    dw 0         ; starting len for expression
+rule_count  dw 0                ; count for rules
+rule_index  dw 1h                ; what rule is being executed(default 1)
+rule_buffer db 128 dup(0)       ; buffer for extracted left
+rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
+buffer      db 3200 dup(0)     ; buffer for symbols in file
+expr_buffer db 3276 dup(0)     ; buffer for input string
 end main
