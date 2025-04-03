@@ -12,25 +12,17 @@ main proc
     ; i will place string the last in order to not overwrite any other data
 
     ; 1) skip description
-    xor ax, ax
-    xor dx, dx
     
     call skip_description
     ; 2) read input expression length
-    xor ax, ax
-    xor dx, dx
 
     call read_len_expr
     ; 2.1) store the static length of the expression
     mov [expr_len_static], ax
     ; 3): сopy input string without last 2 bytes
-    xor ax, ax
-    xor dx, dx
 
     call copy_expr
     ; 4) count the amount of rules
-    xor ax, ax
-    xor dx, dx
 
     call count_rules
 
@@ -53,8 +45,8 @@ main proc
     ; rule_buffer - new right part (to be inserted)
 rule_caller:
     mov cx, [rule_index]
-    cmp cx, 0FFFFh      ; only appear if last rule was final (l => r.)
-    je printing_expr                                        ;                               !!!(print expr)
+    cmp cx, 0affh      ; only appear if last rule was final (l => r.)
+    jae printing_expr                                        ;                               !!!(print expr)
     cmp cx, [rule_count]
     ja printing_expr        ; if we ran out of rules                                        !!!(print expr)
     call getRule
@@ -125,6 +117,8 @@ swapping_inserting:
 
 set_up_rule:
     mov di, offset rule_index
+    cmp [di], 0affh             ; check if it is the last rule
+    jae printing_expr
     mov [di], 0
     jmp next_rule
 printing_expr:
@@ -307,12 +301,27 @@ getRule proc
 
             write_to_buffer:
                 mov al, [si]                   ; load byte from input buffer
+                cmp al, 2Eh                    ; check for 2E (dot)
+                je last_rule
                 mov [di], al                   ; store into expr_buffer
                 inc si
                 inc di
                 jmp start_process
         finish_rule:
             ret
+        last_rule:
+            cmp cx, 1
+            jne force_write_dot
+            add [rule_index], 0affh    ; set rule index to large_number (last rule)
+            inc si                      ; skip dot
+            jmp start_process
+        force_write_dot:
+            mov al, 2Eh
+            mov [di], al                   ; store into expr_buffer
+            inc si
+            inc di
+            jmp start_process
+
 getRule endp
 
 delPreviousRule proc
@@ -321,13 +330,19 @@ delPreviousRule proc
 
     mov di, offset rule_buffer_r
     call StrNull                ; del right part
-
-    mov di, offset rule_index
-    mov dx, [di]                ; get the current rule
-    inc dx                      ; go to next rule (+1)
-    mov [di], dx                ; store the next rule
-
-    ret
+    starting_lol:
+        mov di, offset rule_index
+        cmp [di], 0affh             ; check if it is the last rule
+        jae sub_processing_rule
+        mov dx, [di]                ; get the current rule
+        inc dx                      ; go to next rule (+1)
+        mov [di], dx                ; store the next rule
+        jmp resigh_from
+    resigh_from:
+        ret
+    sub_processing_rule:
+        sub [di], 0affh             ; set rule index to latest rule
+        jmp starting_lol
 delPreviousRule endp
 
 calcLenExpression proc
@@ -518,6 +533,7 @@ done:
     ret             ; Return flags to caller  
 
 StrCompare endp  
+
 StrPos proc  
 
     push ax          ; Save modified registers  
