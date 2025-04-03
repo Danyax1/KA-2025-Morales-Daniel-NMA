@@ -130,8 +130,6 @@ printing_expr:
         inc di
         jmp printing_cycle
 add_symbols:
-    mov [di], 0A0Dh         ; add 0A to the end of the string
-    add di, 2
     mov byte ptr [di], '$'         ; add '$' to the end of the string
     mov dx, offset expr_buffer
     mov ah, 09h
@@ -208,7 +206,6 @@ read_len_expr endp
 
 copy_expr proc
     mov cx, [expr_len]    ; cx = len of expr
-    sub cx, 2                      ; without last 2 bytes (0D0A)
 
 copy_loop:
     mov al, [si]                   ; load byte from input buffer
