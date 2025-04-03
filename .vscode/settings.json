@@ -4,9 +4,7 @@
     "masmtasm.ASM.assembler": "TASMcom",
     "masmtasm.ASM.actions": {
         
-
-
-
+        
 
         "TASMcom": {
             "baseBundle": "<built-in>/TASM.jsdos",

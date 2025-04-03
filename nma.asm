@@ -3,8 +3,7 @@
 .code
 org 100h
 main proc
-    mov ax, @data
-    mov ds, ax
+    call read_filename  ; read the filename from command line
     ; read the file into buffer
     call read_file  
 
@@ -137,7 +136,7 @@ printing_expr:
         inc di
         jmp printing_cycle
 add_symbols:
-    mov [di], 0D0Ah         ; add 0D0A to the end of the string
+    mov [di], 0A0Dh         ; add 0A to the end of the string
     add di, 2
     mov byte ptr [di], '$'         ; add '$' to the end of the string
     mov dx, offset expr_buffer
@@ -149,6 +148,24 @@ exit_prog:
 
 main endp
 ; the following procs are for preparing execution
+read_filename proc
+    mov si, 81h          ; Command-line arguments start at 81h
+    mov di, offset filename
+    mov cx, 20           ; Max filename length (20 bytes)
+
+read_loop:
+    lodsb                ; Load a byte from the command-line arguments into AL
+    cmp al, 0Dh          ; Check for end of arguments (carriage return)
+    je done_reading
+    cmp al, 20h          ; check for space
+    je read_loop
+    stosb                ; Store the byte in the filename buffer
+    loop read_loop       ; Continue reading until CX reaches 0
+
+done_reading:
+    mov byte ptr [di], 0 ; Null-terminate the filename
+    ret
+read_filename endp
 
 read_file proc
     ; open file
@@ -162,7 +179,7 @@ read_file proc
     mov ah, 3fh
     mov bx, file_handle
     mov dx, offset buffer ; buffer to store data
-    mov cx, 32000        ; up to 32 000 bytes
+    mov cx, 3200        ; up to 32 000 bytes
     int 21h
     mov bytes_read, ax      ; store number of bytes
 
@@ -241,6 +258,7 @@ skip_check:
 
 end_count:
     mov [rule_count], cx    ; store rule count
+    mov [rule_index], 1h    ; set rule index to 1
     ret
 count_rules endp
 
@@ -298,7 +316,7 @@ getRule proc
 getRule endp
 
 delPreviousRule proc
-     mov di, offset rule_buffer
+    mov di, offset rule_buffer
     call StrNull                ; del left part
 
     mov di, offset rule_buffer_r
@@ -547,7 +565,7 @@ found:
 
 StrPos endp  
 
-filename    db "input.nma", 0   ; file to load
+filename    db 20 dup(0)   ; file to load
 file_handle dw 0                ; store file handle
 bytes_read  dw 0                ; Number of bytes read
 descr_len   dw 0                ; len for description
