@@ -295,7 +295,7 @@ getRule proc
 
             inc si                       ; skip tab
             mov di, offset rule_buffer_r ; now copiing second part of the rule to the other buffer
-
+            jmp start_process
             write_to_buffer:
                 mov al, [si]                   ; load byte from input buffer
                 cmp al, 2Eh                    ; check for 2E (dot)
