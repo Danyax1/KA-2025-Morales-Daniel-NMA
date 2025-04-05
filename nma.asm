@@ -80,6 +80,8 @@ substitution:
     mov di, offset expr_buffer
 go_to_symbol:
     add di, dx          ; go to the symbol where we need to del symbols
+    cmp cx, 0
+    je create_hole_for_inserting
     delete_symbols:
         mov byte ptr [di], 1           ; load byte from input buffer
         inc di
@@ -385,7 +387,7 @@ Create_hole proc
             inc di                                                                          
             jmp move_to_the_end_of_expr 
         start_r_swap:
-            inc byte ptr [di]
+            inc byte ptr [di]           ; change byte 00 to 01
             pop cx
             swapping:
                 jcxz almost_finish_ret                                                      
@@ -394,7 +396,7 @@ Create_hole proc
                     mov al, byte ptr [di]         ; load byte from input buffer
                     mov ah, byte ptr [di-1]         ; load previous byte from input buffer
                     cmp ah, 01
-                    je preperation
+                    jbe preperation
                     xchg al, ah
                     mov byte ptr [di], al         ; peform swap
                     mov byte ptr [di-1], ah         ; perform swap
