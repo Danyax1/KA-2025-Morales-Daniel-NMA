@@ -1,4 +1,3 @@
-@echo off
 D:
 del /q NMA.COM > NUL
 del /q NMA.EXE > NUL
@@ -18,16 +17,3 @@ del /q NMA.EXE > NUL
 COPY ..\TESTS\CMP.EXE . > NUL
 COPY D:\NMA.COM . > NUL
 COPY D:\NMA.EXE . > NUL
-
-CALL AUTOORIG.BAT
-CALL AUTOSTD.BAT
-CALL AUTOZADV.BAT
-CALL AUTOCUST.BAT
-:end
-del NMA.COM
-del NMA.EXE
-del CMP.EXE
-CD D:\
-type D:\RESULT.TXT
-
-exit

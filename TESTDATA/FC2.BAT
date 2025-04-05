@@ -1,5 +1,7 @@
 @ECHO OFF
+copy OK\%2.OK . > NUL
 cmp %2.OK %2.ACT %2.res
+del %2.OK > NUL
 if errorlevel 1 goto FAILED
 echo %2 PASSED >> D:\RESULT.TXT
 goto PASSED

@@ -14,6 +14,7 @@ TLINK cmp > NUL
 CD D:\TESTDATA
 del /q NMA.COM > NUL
 del /q NMA.EXE > NUL
+del /q CMP.EXE > NUL
 
 COPY ..\TESTS\CMP.EXE . > NUL
 COPY D:\NMA.COM . > NUL
@@ -23,16 +24,10 @@ DEL D:\RESULT.TXT > NUL
 echo Testing...
 echo ================================================
 
-echo INPUT01
-CALL TESTONE INPUT01
-echo INPUT02
-CALL TESTONE INPUT02
-echo INPUT03
-CALL TESTONE INPUT03
-echo EDGE01
-CALL TESTONE EDGE01
-echo EDGE02
-CALL TESTONE EDGE02
+CALL TESTORIG.BAT
+CALL TESTSTD.BAT
+CALL TESTZADV.BAT
+CALL TESTCUST.BAT
 echo ================================================
 
 :end
