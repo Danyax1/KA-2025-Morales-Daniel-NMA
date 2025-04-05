@@ -7,9 +7,7 @@ main proc
     ; read the file into buffer
     call read_file  
 
-    ; the following steps are for preparing data for execution
-    ; i need to store the len of expr to check if it is not too big
-    ; i will place string the last in order to not overwrite any other data
+    call locate_expr  ; find the location of the expression in the buffer
 
     ; 1) skip description
     
@@ -54,7 +52,7 @@ rule_caller:
 
 is_substring: 
     mov si, offset rule_buffer
-    mov di, offset expr_buffer
+    mov di, [location_expr]
     ;   si = address of substring to find  
     ;   di = address of target string to scan 
     call StrPos
@@ -77,7 +75,7 @@ substitution:
     mov di, offset rule_buffer
     call StrLength          ; get length of left part of the rule (di - pointer; cx - length)
     push cx
-    mov di, offset expr_buffer
+    mov di, [location_expr]
 go_to_symbol:
     add di, dx          ; go to the symbol where we need to del symbols
     cmp cx, 0
@@ -97,7 +95,7 @@ create_hole_for_inserting:
 inserting:
     ; insert the right part of the rule into the hole
     mov di, offset rule_buffer_r
-    mov si, offset expr_buffer
+    mov si, [location_expr]
     ; go to the place [si] to insert the right part of the rule
 moving_to_hole:
     mov al, byte ptr [si]           ; load byte from expr
@@ -124,7 +122,7 @@ set_up_rule:
     mov [di], 0
     jmp next_rule
 printing_expr:
-    mov di, offset expr_buffer
+    mov di, [location_expr]
     printing_cycle:
         mov al, byte ptr [di]         ; load byte from expr
         cmp al, 0
@@ -133,7 +131,7 @@ printing_expr:
         jmp printing_cycle
 add_symbols:
     mov byte ptr [di], '$'         ; add '$' to the end of the string
-    mov dx, offset expr_buffer
+    mov dx, [location_expr]
     mov ah, 09h
     int 21h
 exit_prog:
@@ -184,6 +182,17 @@ read_file proc
     ret
 read_file endp
 
+locate_expr proc
+    ; find the end of prog buffer 
+    mov ax, offset buffer
+    add ax, [bytes_read]
+    inc ax
+    inc ax
+    mov di, offset location_expr
+    mov [di], ax         ; store the location of the future expression
+    ret
+locate_expr endp
+
 skip_description proc
     mov ax, word ptr buffer     
     mov [descr_len], ax ; store description length (little-endian)
@@ -201,7 +210,7 @@ read_len_expr proc
     mov [expr_len], ax
 
     add si, 4                      ; skip the 4 bytes that are describing the lenght
-    mov di, offset expr_buffer     ; prepare to write to the expr_buffer
+    mov di, [location_expr]     ; prepare to write to the expr_buffer
 
     ret
 read_len_expr endp
@@ -378,7 +387,7 @@ Create_hole proc
     js move_left         ; if l>r => move left
     move_right:         ; if l<r => move right
         push cx
-        mov di, offset expr_buffer
+        mov di, [location_expr]
         move_to_the_end_of_expr:
             
             mov al, [di]         ; load byte from input buffer
@@ -418,7 +427,7 @@ Create_hole proc
         neg cx
         inc cx
         push cx
-        mov di, offset expr_buffer
+        mov di, [location_expr]
         move_to_last_clear_symbol:
             mov al, byte ptr [di]         ; load byte from input buffer
             cmp al, 1
@@ -451,7 +460,7 @@ Create_hole proc
                 movement_left:
                     dec di
                     mov byte ptr [di], 0         ;change byte 01 to 00
-                    mov di, offset expr_buffer
+                    mov di, [location_expr]
                     jmp move_to_last_clear_symbol 
     finish_ret:
         ret
@@ -583,13 +592,18 @@ StrPos endp
 filename    db 20 dup(0)   ; file to load
 file_handle dw 0                ; store file handle
 bytes_read  dw 0                ; Number of bytes read
+
+location_expr dw 0                ; location of expression in program
+
 descr_len   dw 0                ; len for description
 expr_len    dw 0                ; len for expression
 expr_len_static    dw 0         ; starting len for expression
 rule_count  dw 0                ; count for rules
 rule_index  dw 1h                ; what rule is being executed(default 1)
+
 rule_buffer db 128 dup(0)       ; buffer for extracted left
 rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
+
 buffer      db 3200 dup(0)     ; buffer for symbols in file
-expr_buffer db 3276 dup(0)     ; buffer for input string
+
 end main
