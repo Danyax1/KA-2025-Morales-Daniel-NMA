@@ -371,7 +371,7 @@ calcLenExpression proc
 
     add expr_len, cx      ; update expr_len value
 
-    cmp expr_len, 3276d  ; check for overflow
+    cmp expr_len, 32768d  ; check for overflow
     ;ja exit_prog            ; if overflow => exit program                                       !!!(print expr)
 
     ret
