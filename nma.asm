@@ -320,8 +320,17 @@ getRule proc
         last_rule:
             cmp cx, 1
             jne force_write_dot
+            inc si
+            cmp byte ptr [si], 09h
+            je overwrite_rule_count
+            dec si
+            dec si
+            cmp byte ptr [si], 09h
+            jne restore_pos_1
+            inc si
+            inc si
+        overwrite_rule_count:
             add [rule_index], 0affh    ; set rule index to large_number (last rule)
-            inc si                      ; skip dot
             jmp start_process
         force_write_dot:
             mov al, 2Eh
@@ -329,7 +338,9 @@ getRule proc
             inc si
             inc di
             jmp start_process
-
+        restore_pos_1:
+            inc si
+            jmp force_write_dot
 getRule endp
 
 delPreviousRule proc
