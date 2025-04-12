@@ -3,6 +3,11 @@
 .code
 org 100h
 main proc
+    ; clean all buffers
+    call clean_all
+
+    call locate_buffer  ; locate the buffer in prog
+
     call read_filename  ; read the filename from command line
     ; read the file into buffer
     call read_file  
@@ -140,6 +145,34 @@ exit_prog:
 
 main endp
 ; the following procs are for preparing execution
+clean_all proc
+    push di
+
+    mov di, offset rule_buffer_r
+    mov cx, 64000d
+    clear_buffer:
+        mov [di], 0         ; clean
+        inc di
+        dec cx
+        cmp cx, 0
+        jne clear_buffer
+    
+    pop di
+    ret
+clean_all endp
+
+locate_buffer proc
+    push di
+
+    mov di, offset rule_buffer_r
+    add di, 130h
+    mov [location_buffer], di ; store the location of the buffer in prog
+
+    pop di
+
+    ret
+locate_buffer endp
+
 read_filename proc
     mov si, 81h          ; Command-line arguments start at 81h
     mov di, offset filename
@@ -170,7 +203,7 @@ read_file proc
     ; read file
     mov ah, 3fh
     mov bx, file_handle
-    mov dx, offset buffer ; buffer to store data
+    mov dx, location_buffer ; buffer to store data
     mov cx, 3200        ; up to 32 000 bytes
     int 21h
     mov bytes_read, ax      ; store number of bytes
@@ -184,7 +217,7 @@ read_file endp
 
 locate_expr proc
     ; find the end of prog buffer 
-    mov ax, offset buffer
+    mov ax, location_buffer
     add ax, [bytes_read]
     inc ax
     inc ax
@@ -194,13 +227,17 @@ locate_expr proc
 locate_expr endp
 
 skip_description proc
-    mov ax, word ptr buffer     
+    push di
+
+    mov di, location_buffer
+    mov ax, [di]          ; read length
     mov [descr_len], ax ; store description length (little-endian)
 
     add ax, 4                      ; adjust for the 4-byte length field
-    add ax, offset buffer          ; compute start of input expr
+    add ax, location_buffer         ; compute start of input expr
     mov si, ax                     ; si points to input expr
 
+    pop di
     ret
 
 skip_description endp
@@ -234,7 +271,7 @@ count_rules proc
     mov ax, [descr_len]
     add ax, [expr_len]      
     add ax, 12              ; skip expr/descr/rule length field
-    add ax, offset buffer   ; Compute start of rules section
+    add ax, location_buffer   ; Compute start of rules section
     mov si, ax              ; si points to rules
 
     xor cx, cx              ; clear cx
@@ -269,7 +306,7 @@ getRule proc
     rule_fetching:
 
     xor ax, ax
-    mov ax, offset buffer
+    mov ax, location_buffer
     add ax, 12d             ; skip expr/descr/rule length field + 0D0A
     add ax, [descr_len]   ; Compute start of rules section
     add ax, [expr_len_static]      ; skip expr length field
@@ -604,6 +641,7 @@ filename    db 20 dup(0)   ; file to load
 file_handle dw 0                ; store file handle
 bytes_read  dw 0                ; Number of bytes read
 
+location_buffer dw 0                ; location of buffer in program
 location_expr dw 0                ; location of expression in program
 
 descr_len   dw 0                ; len for description
@@ -615,6 +653,6 @@ rule_index  dw 1h                ; what rule is being executed(default 1)
 rule_buffer db 128 dup(0)       ; buffer for extracted left
 rule_buffer_r db 128 dup(0)     ; buffer for extracted Rright
 
-buffer      db 3200 dup(0)     ; buffer for symbols in file
+;buffer      db 3200 dup(0)     ; buffer for symbols in file
 
 end main
